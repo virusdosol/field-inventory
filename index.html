@@ -59,20 +59,26 @@ const ui={tab:'inv',eq:null,comp:null,sel:null,fc:'',fe:'',sort:'name'};
 let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toastT);toastT=setTimeout(()=>t.style.display='none',3500)}
 function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){toast('Armazenamento cheio: exporte um backup e remova imagens grandes.')}}
 const E=id=>S.eq.find(e=>e.id===id),It=id=>S.items.find(i=>i.id===id),Ct=id=>S.cats.find(c=>c.id===id);
-const comp=(eid,cid)=>E(eid)?.comps.find(c=>c.id===cid);
+const comp=(eid,cid)=>E(eid)?.comps.find(c=>c.id===cid)||E(eid)?.extGrids?.find(c=>c.id===cid);
+const isExtG=(eid,cid)=>!!E(eid)?.extGrids?.some(c=>c.id===cid);
+function migrate(){S.eq.forEach(e=>{if(e.ext&&!e.extGrids)e.extGrids=['Tripé','Barraca','Chinelos'].map(n=>({id:uid(),name:n,w:6,h:6}));if(!e.extGrids)e.extGrids=[]});
+ S.items.forEach(i=>{if(i.loc.comp!=='ext')return;const e=E(i.loc.eq);if(!e||!e.extGrids.length){e&&(e.extGrids=[{id:uid(),name:'Carga 1',w:6,h:6}])}
+  const gs=e.extGrids,pref=gs.find(k=>new RegExp(k.name.slice(0,4),'i').test(i.name));
+  for(const g of [pref,...gs].filter(Boolean)){const s=spot(e.id,g.id,i.w,i.h,i.id);if(s){i.w=s.w;i.h=s.h;i.loc={eq:e.id,comp:g.id,x:s.x,y:s.y};return}}
+  const g=pref||gs[0];while(true){g.h++;const s=spot(e.id,g.id,i.w,i.h,i.id);if(s){i.w=s.w;i.h=s.h;i.loc={eq:e.id,comp:g.id,x:s.x,y:s.y};return}}})}
 const fmtW=g=>g>=1000?(g/1000).toFixed(2).replace('.',',')+' kg':Math.round(g)+' g';
 const iw=i=>(+i.g||0)*(+i.qty||1);
 const inComp=(eid,cid)=>S.items.filter(i=>i.loc.eq===eid&&i.loc.comp===cid);
 const inEq=eid=>S.items.filter(i=>i.loc.eq===eid);
-const locStr=i=>{const e=E(i.loc.eq);return e?e.name+' · '+(i.loc.comp==='ext'?'Carga externa':comp(i.loc.eq,i.loc.comp)?.name):'—'};
+const locStr=i=>{const e=E(i.loc.eq);return e?e.name+' · '+(isExtG(e.id,i.loc.comp)?'Carga externa: ':'')+comp(i.loc.eq,i.loc.comp)?.name:'—'};
 function why(eid,cid,x,y,w,h,ign){const c=comp(eid,cid);if(!c)return'Compartimento inexistente.';
  if(x<0||y<0||x+w>c.w||y+h>c.h)return'Fora da grade ('+c.w+'×'+c.h+').';
  const o=inComp(eid,cid).find(i=>i.id!==ign&&x<i.loc.x+i.w&&x+w>i.loc.x&&y<i.loc.y+i.h&&y+h>i.loc.y);
  return o?'Sobrepõe "'+o.name+'".':''}
 function spot(eid,cid,w,h,ign){const c=comp(eid,cid);for(const[a,b]of[[w,h],[h,w]])for(let y=0;y<=c.h-b;y++)for(let x=0;x<=c.w-a;x++)if(!why(eid,cid,x,y,a,b,ign))return{x,y,w:a,h:b};return null}
-function put(it,eid,cid,x,y,w,h){if(cid==='ext'){it.loc={eq:eid,comp:'ext'};return true}const m=why(eid,cid,x,y,w,h,it.id);if(m){toast('Não coube: '+m+' O objeto continua onde estava.');return false}
+function put(it,eid,cid,x,y,w,h){const m=why(eid,cid,x,y,w,h,it.id);if(m){toast('Não coube: '+m+' O objeto continua onde estava.');return false}
  it.w=w;it.h=h;it.loc={eq:eid,comp:cid,x,y};save();return true}
-function autoMove(it,eid,cid){if(cid==='ext'){it.loc={eq:eid,comp:'ext'};save();return true}const s=spot(eid,cid,it.w,it.h,it.id);if(!s){toast('Sem espaço livre em '+comp(eid,cid).name+'. O objeto continua onde estava.');return false}return put(it,eid,cid,s.x,s.y,s.w,s.h)}
+function autoMove(it,eid,cid){const s=spot(eid,cid,it.w,it.h,it.id);if(!s){toast('Sem espaço livre em '+comp(eid,cid).name+'. O objeto continua onde estava.');return false}return put(it,eid,cid,s.x,s.y,s.w,s.h)}
 function cs(c){const av=Math.min(innerWidth,560)-40;return Math.max(24,Math.min(56,Math.floor(av/c.w)))}
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 const catChip=i=>{const c=Ct(i.cat);return c?`<span class="chip" style="border-color:${c.color}">${esc(c.name)}${i.sub?' / '+esc(i.sub):''}</span>`:''};
@@ -85,24 +91,28 @@ function vInv(){if(ui.eq)return vComp();
  let cells=0,used=0;e.comps.forEach(c=>{cells+=c.w*c.h;inComp(e.id,c.id).forEach(i=>used+=i.w*i.h)});
  const its=inEq(e.id),w=its.reduce((a,i)=>a+iw(i),0);
  return`<div class="pn" data-a="openEq" data-id="${e.id}"><div class="row"><div class="sp"><div class="mu">${esc(e.code)}</div><h3>${esc(e.name)}</h3></div><div class="cd">${fmtW(w)}</div></div>
- <div class="mu">${e.comps.length} compartimento(s)${e.liters?' · '+e.liters+' L':''}${e.ext?' · carga externa: '+its.filter(i=>i.loc.comp==='ext').length:''} · ${its.length} obj.</div><div class="bar"><i style="width:${pct(used,cells)}%"></i></div><div class="mu">${used}/${cells} células · ${pct(used,cells)}%</div></div>`}).join('')}
-function vComp(){const e=E(ui.eq);if(!e){ui.eq=null;return vInv()}
- let cid=ui.comp;if(cid!=='ext'&&!comp(e.id,cid))cid=ui.comp=e.comps[0]?.id;
- const isExt=cid==='ext',c=isExt?null:comp(e.id,cid),its=inComp(e.id,cid);
- let h=`<div class="row" style="margin-bottom:8px"><button class="b" data-a="back">‹ Voltar</button><div class="sp"><h2>${esc(e.name)}</h2></div></div><div class="tabs">`+
- e.comps.map(k=>`<button class="b ${k.id===cid?'pr':''}" data-a="tab" data-id="${k.id}">${esc(k.name)}</button>`).join('')+(e.ext?`<button class="b ${isExt?'pr':''}" data-a="tab" data-id="ext">EXTERNAL LOAD</button>`:'')+`</div>`;
- if(isExt){h+=`<div class="pn mu">Carga presa por fora da mochila. Não ocupa células.</div>`+its.map(rowItem).join('')||''}
- else{let u=0;its.forEach(i=>u+=i.w*i.h);const t=c.w*c.h,s=cs(c);
-  h+=`<div class="pn row"><div class="sp mu">${c.w}×${c.h} · ${u}/${t} ocupadas · ${t-u} livres · ${pct(u,t)}%</div><b class="cd">${fmtW(its.reduce((a,i)=>a+iw(i),0))}</b></div>
-  <div class="gw"><div class="grid" id="grid" data-c="${c.id}" data-s="${s}" style="grid-template-columns:repeat(${c.w},${s}px);grid-auto-rows:${s}px;width:${c.w*s+2}px">`+
-  Array.from({length:c.w*c.h},(_,n)=>`<div class="cell" data-a="cell" data-x="${n%c.w}" data-y="${n/c.w|0}"></div>`).join('')+
-  its.map(i=>{const cc=Ct(i.cat)?.color||'#869080';return`<div class="it ${ui.sel===i.id?'sel':''} ${ui.hl===i.id?'hl':''}" data-id="${i.id}" style="left:${i.loc.x*s}px;top:${i.loc.y*s}px;width:${i.w*s}px;height:${i.h*s}px;border-color:${cc}">${i.img?`<img src="${i.img}" alt="">`:`<span class="ph">${esc(i.name)}</span>`}${i.qty>1?`<span class="q">${i.qty}</span>`:''}</div>`}).join('')+`</div></div>`;
-  h+=`<div class="mu" style="margin:6px 0">Toque num objeto para selecionar e numa célula para posicionar, ou arraste.</div>`}
- h+=`<button class="b pr" style="width:100%;margin:8px 0" data-a="newItem">+ Adicionar objeto</button>`;
- if(ui.sel&&It(ui.sel)){const i=It(ui.sel);h+=`<div class="pn"><div class="row">${thumb(i)}<div class="sp"><h3>${esc(i.name)}</h3><div class="mu">${i.w}×${i.h} · qtd ${i.qty} · ${fmtW(iw(i))}</div></div></div>
+ <div class="mu">${e.comps.length} compartimento(s)${e.liters?' · '+e.liters+' L':''}${e.extGrids?.length?' · carga externa: '+its.filter(i=>isExtG(e.id,i.loc.comp)).length:''} · ${its.length} obj.</div><div class="bar"><i style="width:${pct(used,cells)}%"></i></div><div class="mu">${used}/${cells} células · ${pct(used,cells)}%</div></div>`}).join('')}
+function gridHtml(e,c){const its=inComp(e.id,c.id);let u=0;its.forEach(i=>u+=i.w*i.h);const t=c.w*c.h,s=cs(c);
+ return`<div class="pn row"><div class="sp mu">${c.w}×${c.h} · ${u}/${t} ocupadas · ${t-u} livres · ${pct(u,t)}%</div><b class="cd">${fmtW(its.reduce((a,i)=>a+iw(i),0))}</b></div>
+ <div class="gw"><div class="grid" data-c="${c.id}" data-s="${s}" style="grid-template-columns:repeat(${c.w},${s}px);grid-auto-rows:${s}px;width:${c.w*s+2}px">`+
+ Array.from({length:c.w*c.h},(_,n)=>`<div class="cell" data-a="cell" data-c="${c.id}" data-x="${n%c.w}" data-y="${n/c.w|0}"></div>`).join('')+
+ its.map(i=>{const cc=Ct(i.cat)?.color||'#869080';return`<div class="it ${ui.sel===i.id?'sel':''} ${ui.hl===i.id?'hl':''}" data-id="${i.id}" style="left:${i.loc.x*s}px;top:${i.loc.y*s}px;width:${i.w*s}px;height:${i.h*s}px;border-color:${cc}">${i.img?`<img src="${i.img}" alt="">`:`<span class="ph">${esc(i.name)}</span>`}${i.qty>1?`<span class="q">${i.qty}</span>`:''}</div>`}).join('')+`</div></div>`}
+function selPanel(){const i=ui.sel&&It(ui.sel);if(!i)return'';return`<div class="pn"><div class="row">${thumb(i)}<div class="sp"><h3>${esc(i.name)}</h3><div class="mu">${i.w}×${i.h} · qtd ${i.qty} · ${fmtW(iw(i))}</div></div></div>
  <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="b" data-a="rot">Girar 90°</button><button class="b" data-a="qm">−</button><button class="b" data-a="qp">+</button><button class="b" data-a="edit">Editar</button><button class="b" data-a="dup">Duplicar</button>${i.img?`<button class="b" data-a="zoom">Ampliar</button>`:''}<button class="b dg" data-a="del">Excluir</button></div>
- <label>Mover para…</label><select data-a="mvsel"><option value="">Selecione</option>${S.eq.map(q=>q.comps.map(k=>`<option value="${q.id}|${k.id}">${esc(q.name)} · ${esc(k.name)}</option>`).join('')+(q.ext?`<option value="${q.id}|ext">${esc(q.name)} · EXTERNAL LOAD</option>`:'')).join('')}</select></div>`}
- if(!isExt)h+=its.map(rowItem).join('');
+ <label>Mover para…</label><select data-a="mvsel"><option value="">Selecione</option>${S.eq.map(q=>q.comps.map(k=>`<option value="${q.id}|${k.id}">${esc(q.name)} · ${esc(k.name)}</option>`).join('')+(q.extGrids||[]).map(k=>`<option value="${q.id}|${k.id}">${esc(q.name)} · Carga externa: ${esc(k.name)}</option>`).join('')).join('')}</select></div>`}
+function vComp(){const e=E(ui.eq);if(!e){ui.eq=null;return vInv()}
+ const eg=e.extGrids||[],hasExt=e.ext||eg.length;let cid=ui.comp;
+ if(cid==='ext'&&!hasExt)cid=ui.comp=e.comps[0]?.id;
+ if(cid!=='ext'&&!comp(e.id,cid))cid=ui.comp=e.comps[0]?.id;
+ const isExt=cid==='ext';
+ let h=`<div class="row" style="margin-bottom:8px"><button class="b" data-a="back">‹ Voltar</button><div class="sp"><h2>${esc(e.name)}</h2></div></div><div class="tabs">`+
+ e.comps.map(k=>`<button class="b ${k.id===cid?'pr':''}" data-a="tab" data-id="${k.id}">${esc(k.name)}</button>`).join('')+(hasExt?`<button class="b ${isExt?'pr':''}" data-a="tab" data-id="ext">EXTERNAL LOAD</button>`:'')+`</div>`;
+ const hint=`<div class="mu" style="margin:6px 0">Toque num objeto para selecionar e numa célula para posicionar, ou arraste.</div>`;
+ if(isExt){h+=`<div class="pn mu">Carga presa por fora. Cada grade é independente; edite, crie ou remova em Config.</div>`+selPanel()+hint;
+  if(!eg.length)h+=`<div class="pn mu">Nenhuma grade externa. Crie uma em Config.</div>`;
+  eg.forEach(g=>{h+=`<h3 style="margin:14px 0 6px;color:var(--g)">${esc(g.name)}</h3>`+gridHtml(e,g)+`<button class="b pr" style="width:100%;margin:8px 0" data-a="newItem" data-id="${g.id}">+ Adicionar objeto em ${esc(g.name)}</button>`+inComp(e.id,g.id).map(rowItem).join('')})}
+ else{const c=comp(e.id,cid);if(!c)return h+`<div class="pn mu">Este equipamento não tem compartimentos. Crie um em Config.</div>`;
+  h+=gridHtml(e,c)+hint+`<button class="b pr" style="width:100%;margin:8px 0" data-a="newItem" data-id="${c.id}">+ Adicionar objeto</button>`+selPanel()+inComp(e.id,cid).map(rowItem).join('')}
  return h}
 function rowItem(i){return`<div class="pn row" data-a="pick" data-id="${i.id}">${thumb(i)}<div class="sp"><b>${esc(i.name)}</b> ${catChip(i)}<div class="mu">${i.w}×${i.h} · qtd ${i.qty} · ${fmtW(iw(i))}</div></div></div>`}
 function listRow(i){return`<div class="pn row" data-a="go" data-id="${i.id}">${thumb(i)}<div class="sp"><b>${esc(i.name)}</b> ${catChip(i)}<div class="mu">${esc(locStr(i))}</div></div><div class="cd">${i.qty}× · ${fmtW(iw(i))}</div></div>`}
@@ -118,9 +128,11 @@ function vStats(){const tw=S.items.reduce((a,i)=>a+iw(i),0),n=S.items.reduce((a,
  return`<h1>ESTATÍSTICAS</h1><div class="pn"><div class="cd" style="font-size:26px">${fmtW(tw)}</div><div class="mu">${n} unidades · ${S.items.length} objetos · ${used}/${cells} células · ${cells-used} livres</div></div><h3>Peso por equipamento</h3>`+
  eqs.map(x=>`<div class="pn"><div class="row"><span class="sp">${esc(x.e.name)}</span><b>${fmtW(x.w)}</b></div><div class="bar"><i style="width:${pct(x.u,x.c)}%"></i></div><div class="mu">${pct(x.u,x.c)}% ocupado · ${x.c-x.u} livres</div></div>`).join('')+`<h3>Por categoria</h3>`+
  S.cats.map(c=>{const l=S.items.filter(i=>i.cat===c.id),w=l.reduce((a,i)=>a+iw(i),0);return`<div class="pn"><div class="row"><span class="sp chip" style="border-color:${c.color}">${esc(c.name)}</span><span>${l.length} · ${fmtW(w)}</span></div><div class="bar"><i style="width:${pct(w,tw)}%;background:${c.color}"></i></div></div>`}).join('')}
+function extCfg(e){if(!e.ext&&!(e.extGrids||[]).length)return`<button class="b" style="margin:8px 0 0 8px" data-a="extOn" data-id="${e.id}">+ Ativar carga externa</button>`;
+ return`<div style="border-top:1px solid var(--ln);margin-top:10px;padding-top:8px"><b class="cd" style="color:var(--g)">EXTERNAL LOAD</b>`+(e.extGrids||[]).map(k=>`<div class="row mu" style="margin-top:6px"><span class="sp">${esc(k.name)} — ${k.w}×${k.h} (${k.w*k.h} células)</span><button class="b" data-a="cpEdit" data-id="${e.id}|${k.id}">Grade</button><button class="b dg" data-a="cpDel" data-id="${e.id}|${k.id}">×</button></div>`).join('')+`<button class="b" style="margin-top:8px" data-a="cpAdd" data-id="${e.id}|@ext">+ Grade externa</button></div>`}
 function vCfg(){return`<h1>CONFIGURAÇÕES</h1><h3 style="margin-top:10px">Equipamentos</h3>`+S.eq.map(e=>`<div class="pn"><div class="row"><div class="sp"><b>${esc(e.name)}</b><div class="mu">${esc(e.code)}${e.liters?' · '+e.liters+' L':''}</div></div><button class="b" data-a="eqEdit" data-id="${e.id}">Editar</button><button class="b dg" data-a="eqDel" data-id="${e.id}">×</button></div>
  ${e.comps.map(k=>`<div class="row mu" style="margin-top:6px"><span class="sp">${esc(k.name)} — ${k.w}×${k.h} (${k.w*k.h} células)</span><button class="b" data-a="cpEdit" data-id="${e.id}|${k.id}">Grade</button><button class="b dg" data-a="cpDel" data-id="${e.id}|${k.id}">×</button></div>`).join('')}
- <button class="b" style="margin-top:8px" data-a="cpAdd" data-id="${e.id}">+ Compartimento</button></div>`).join('')+`<button class="b pr" style="width:100%" data-a="eqAdd">+ Novo equipamento</button>
+ <button class="b" style="margin-top:8px" data-a="cpAdd" data-id="${e.id}">+ Compartimento</button>${extCfg(e)}</div>`).join('')+`<button class="b pr" style="width:100%" data-a="eqAdd">+ Novo equipamento</button>
  <h3 style="margin-top:14px">Categorias</h3>`+S.cats.map(c=>`<div class="row pn"><span class="chip sp" style="border-color:${c.color}">${esc(c.name)}</span><button class="b" data-a="catEdit" data-id="${c.id}">Editar</button><button class="b dg" data-a="catDel" data-id="${c.id}">×</button></div>`).join('')+`<button class="b pr" style="width:100%" data-a="catAdd">+ Nova categoria</button>
  <h3 style="margin-top:14px">Backup</h3><div class="grp"><button class="b" data-a="exp">Exportar</button><button class="b" data-a="imp">Importar</button></div><input type="file" id="impf" accept=".json" style="display:none">
  <h3 style="margin-top:14px">Sincronização</h3><div class="pn mu">Nuvem ainda não conectada. Os dados ficam salvos neste aparelho; use o backup para levar a outro dispositivo.</div>`}
@@ -145,10 +157,10 @@ function itemForm(i){i=i||{};pendImg=undefined;
 function saveItem(id){const n=$('#f_n').value.trim();if(!n)return toast('Informe o nome.');
  const w=Math.max(1,parseInt($('#f_w').value)||1),h=Math.max(1,parseInt($('#f_h').value)||1),stack=$('#f_st').checked;let qty=Math.max(1,parseInt($('#f_q').value)||1);if(!stack)qty=1;
  const d={name:n,desc:$('#f_d').value,cat:$('#f_c').value||S.cats[S.cats.length-1]?.id,sub:$('#f_s').value,g:+$('#f_g').value||0,qty,stack,notes:$('#f_o').value};
- if(id){const i=It(id);if(i.loc.comp!=='ext'&&(w!==i.w||h!==i.h)){const m=why(i.loc.eq,i.loc.comp,i.loc.x,i.loc.y,w,h,id);if(m)return toast('Novo tamanho não cabe: '+m)}
+ if(id){const i=It(id);if(w!==i.w||h!==i.h){const m=why(i.loc.eq,i.loc.comp,i.loc.x,i.loc.y,w,h,id);if(m)return toast('Novo tamanho não cabe: '+m)}
   Object.assign(i,d,{w,h});if(pendImg)i.img=pendImg;if($('#f_ri')?.checked)i.img=null}
  else{const i={id:uid(),...d,w,h,img:pendImg||null,loc:null};
-  if(ui.comp==='ext')i.loc={eq:ui.eq,comp:'ext'};else{const s=spot(ui.eq,ui.comp,w,h);if(!s)return toast('Sem espaço livre neste compartimento para '+w+'×'+h+'.');i.w=s.w;i.h=s.h;i.loc={eq:ui.eq,comp:ui.comp,x:s.x,y:s.y}}
+  {const cid=ui.target||ui.comp;const s=spot(ui.eq,cid,w,h);if(!s)return toast('Sem espaço livre nesta grade para '+w+'×'+h+'.');i.w=s.w;i.h=s.h;i.loc={eq:ui.eq,comp:cid,x:s.x,y:s.y}}
   S.items.push(i);ui.sel=i.id}
  save();closeM();render()}
 function simpleForm(title,fields,okAction,id){modal(`<h2>${title}</h2>`+fields.map(f=>`<label>${f[1]}</label><input id="g_${f[0]}" value="${esc(f[2]??'')}" ${f[3]||''}>`).join('')+`<div class="row" style="margin-top:12px"><button class="b sp" data-a="mc">Cancelar</button><button class="b pr sp" data-a="${okAction}" data-id="${id||''}">Salvar</button></div>`)}
@@ -166,36 +178,37 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('[data-a]');if(
  if(a==='pick'){ui.sel=ui.sel===id?null:id;render()}
  if(a==='desel'){ui.sel=null;render()}
  if(a==='mc')closeM();
- if(a==='go'){const i=It(id);ui.tab='inv';ui.eq=i.loc.eq;ui.comp=i.loc.comp;ui.sel=id;ui.hl=id;render();setTimeout(()=>ui.hl=null,3500)}
- if(a==='cell'&&it){const x=+t.dataset.x,y=+t.dataset.y;if(put(it,ui.eq,ui.comp,x,y,it.w,it.h)){ui.sel=null;render()}}
- if(a==='rot'&&it){const w=it.h,h=it.w;if(it.loc.comp!=='ext'){const m=why(it.loc.eq,it.loc.comp,it.loc.x,it.loc.y,w,h,it.id);if(m)return toast('Não dá para girar: '+m)}it.w=w;it.h=h;save();render()}
+ if(a==='go'){const i=It(id);ui.tab='inv';ui.eq=i.loc.eq;ui.comp=isExtG(i.loc.eq,i.loc.comp)?'ext':i.loc.comp;ui.sel=id;ui.hl=id;render();setTimeout(()=>ui.hl=null,3500)}
+ if(a==='cell'&&it){const x=+t.dataset.x,y=+t.dataset.y;if(put(it,ui.eq,t.dataset.c,x,y,it.w,it.h)){ui.sel=null;render()}}
+ if(a==='rot'&&it){const w=it.h,h=it.w;{const m=why(it.loc.eq,it.loc.comp,it.loc.x,it.loc.y,w,h,it.id);if(m)return toast('Não dá para girar: '+m)}it.w=w;it.h=h;save();render()}
  if(a==='qp'&&it){if(!it.stack)return toast('Este objeto não é empilhável. Edite para permitir.');it.qty++;save();render()}
  if(a==='qm'&&it){if(it.qty>1){it.qty--;save();render()}}
  if(a==='edit'&&it)itemForm(it);
- if(a==='newItem')itemForm();
+ if(a==='newItem'){ui.target=id;itemForm()}
  if(a==='saveItem')saveItem(id);
- if(a==='dup'&&it){const s=it.loc.comp==='ext'?{}:spot(it.loc.eq,it.loc.comp,it.w,it.h);if(!s)return toast('Sem espaço para duplicar.');const c={...it,id:uid(),name:it.name+' (cópia)',loc:it.loc.comp==='ext'?{...it.loc}:{eq:it.loc.eq,comp:it.loc.comp,x:s.x,y:s.y}};if(s.w){c.w=s.w;c.h=s.h}S.items.push(c);ui.sel=c.id;save();render()}
+ if(a==='dup'&&it){const s=spot(it.loc.eq,it.loc.comp,it.w,it.h);if(!s)return toast('Sem espaço para duplicar.');const c={...it,id:uid(),name:it.name+' (cópia)',w:s.w,h:s.h,loc:{eq:it.loc.eq,comp:it.loc.comp,x:s.x,y:s.y}};S.items.push(c);ui.sel=c.id;save();render()}
  if(a==='del'&&it&&confirm('Excluir "'+it.name+'"?')){S.items=S.items.filter(i=>i.id!==it.id);ui.sel=null;save();render()}
  if(a==='zoom'&&it)modal(`<img src="${it.img}" style="width:100%;max-height:70vh;object-fit:contain;background:#000"><button class="b" style="width:100%;margin-top:8px" data-a="mc">Fechar</button>`);
  /* config */
+ if(a==='extOn'){const e=E(id);e.ext=true;e.extGrids=[{id:uid(),name:'Carga 1',w:6,h:6}];save();render()}
  if(a==='eqAdd')simpleForm('NOVO EQUIPAMENTO',[['n','Nome'],['c','Código'],['l','Capacidade (L, opcional)','','type=number']],'eqSave');
  if(a==='eqEdit'){const e=E(id);simpleForm('EDITAR EQUIPAMENTO',[['n','Nome',e.name],['c','Código',e.code],['l','Capacidade (L)',e.liters,'type=number']],'eqSave',id)}
  if(a==='eqSave'){if(!g('n'))return toast('Informe o nome.');if(id){const e=E(id);Object.assign(e,{name:g('n'),code:g('c'),liters:g('l')})}else S.eq.push({id:uid(),name:g('n'),code:g('c'),liters:g('l'),brand:'',ext:false,comps:[{id:uid(),name:'Principal',w:6,h:6}]});save();closeM();render()}
  if(a==='eqDel'){if(inEq(id).length)return toast('Mova ou exclua os objetos deste equipamento antes de removê-lo.');if(confirm('Excluir equipamento?')){S.eq=S.eq.filter(e=>e.id!==id);save();render()}}
- if(a==='cpAdd')simpleForm('NOVO COMPARTIMENTO',[['n','Nome'],['w','Largura (células)',6,'type=number'],['h','Altura (células)',6,'type=number']],'cpSave',id+'|');
+ if(a==='cpAdd')simpleForm('NOVO COMPARTIMENTO',[['n','Nome'],['w','Largura (células)',6,'type=number'],['h','Altura (células)',6,'type=number']],'cpSave',id.includes('|')?id:id+'|');
  if(a==='cpEdit'){const[e,k]=id.split('|'),c=comp(e,k);simpleForm('GRADE',[['n','Nome',c.name],['w','Largura (células)',c.w,'type=number'],['h','Altura (células)',c.h,'type=number']],'cpSave',id)}
  if(a==='cpSave'){const[e,k]=id.split('|'),w=Math.max(1,parseInt(g('w'))||1),h=Math.max(1,parseInt(g('h'))||1);if(!g('n'))return toast('Informe o nome.');
-  if(k){const bad=inComp(e,k).find(i=>i.loc.x+i.w>w||i.loc.y+i.h>h);if(bad)return toast('"'+bad.name+'" ficaria fora da grade. Mova-o antes.');Object.assign(comp(e,k),{name:g('n'),w,h})}else E(e).comps.push({id:uid(),name:g('n'),w,h});save();closeM();render()}
- if(a==='cpDel'){const[e,k]=id.split('|');if(inComp(e,k).length)return toast('Esvazie o compartimento antes de excluir.');if(confirm('Excluir compartimento?')){E(e).comps=E(e).comps.filter(c=>c.id!==k);save();render()}}
+  if(k==='@ext')E(e).extGrids.push({id:uid(),name:g('n'),w,h});else if(k){const bad=inComp(e,k).find(i=>i.loc.x+i.w>w||i.loc.y+i.h>h);if(bad)return toast('"'+bad.name+'" ficaria fora da grade. Mova-o antes.');Object.assign(comp(e,k),{name:g('n'),w,h})}else E(e).comps.push({id:uid(),name:g('n'),w,h});save();closeM();render()}
+ if(a==='cpDel'){const[e,k]=id.split('|');if(inComp(e,k).length)return toast('Esvazie o compartimento antes de excluir.');if(confirm('Excluir compartimento?')){E(e).comps=E(e).comps.filter(c=>c.id!==k);if(E(e).extGrids)E(e).extGrids=E(e).extGrids.filter(c=>c.id!==k);save();render()}}
  if(a==='catAdd')simpleForm('NOVA CATEGORIA',[['n','Nome'],['c','Cor','#78a342','type=color'],['d','Descrição']],'catSave');
  if(a==='catEdit'){const c=Ct(id);simpleForm('EDITAR CATEGORIA',[['n','Nome',c.name],['c','Cor',c.color,'type=color'],['d','Descrição',c.desc]],'catSave',id)}
  if(a==='catSave'){if(!g('n'))return toast('Informe o nome.');if(id)Object.assign(Ct(id),{name:g('n'),color:g('c'),desc:g('d')});else S.cats.push({id:uid(),name:g('n'),color:g('c'),icon:g('n')[0],desc:g('d'),subs:[]});save();closeM();render()}
  if(a==='catDel'){if(S.items.some(i=>i.cat===id))return toast('Há objetos nesta categoria. Altere a categoria deles antes.');S.cats=S.cats.filter(c=>c.id!==id);save();render()}
  if(a==='exp'){const b=new Blob([JSON.stringify(S)],{type:'application/json'}),l=document.createElement('a');l.href=URL.createObjectURL(b);l.download='field-inventory-'+new Date().toISOString().slice(0,10)+'.json';l.click()}
- if(a==='imp'){const f=$('#impf');f.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.eq)||!Array.isArray(d.items)||!Array.isArray(d.cats))throw 0;if(confirm('Substituir TODOS os dados atuais pelo backup?')){S=d;ui.eq=null;ui.sel=null;save();render();toast('Backup importado.')}}catch(e){toast('Arquivo de backup inválido.')}};r.readAsText(f.files[0])};f.click()}
+ if(a==='imp'){const f=$('#impf');f.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.eq)||!Array.isArray(d.items)||!Array.isArray(d.cats))throw 0;if(confirm('Substituir TODOS os dados atuais pelo backup?')){S=d;migrate();ui.eq=null;ui.sel=null;save();render();toast('Backup importado.')}}catch(e){toast('Arquivo de backup inválido.')}};r.readAsText(f.files[0])};f.click()}
 });
 document.addEventListener('change',ev=>{const t=ev.target;
- if(t.dataset.a==='mvsel'&&t.value&&ui.sel){const[e,k]=t.value.split('|'),it=It(ui.sel);if(autoMove(it,e,k)){ui.eq=e;ui.comp=k;render()}else t.value=''}
+ if(t.dataset.a==='mvsel'&&t.value&&ui.sel){const[e,k]=t.value.split('|'),it=It(ui.sel);if(autoMove(it,e,k)){ui.eq=e;ui.comp=isExtG(e,k)?'ext':k;render()}else t.value=''}
  if(t.id==='fc'){ui.fc=t.value;render()}if(t.id==='fe'){ui.fe=t.value;render()}if(t.id==='so'){ui.sort=t.value;render()}});
 document.addEventListener('input',ev=>{if(ev.target.id==='q'){ui.q=ev.target.value;$('#res').innerHTML=resHtml()}});
 
@@ -210,6 +223,6 @@ document.addEventListener('pointerup',ev=>{if(!dr)return;const d=dr;dr=null;docu
  if(!d.on){ui.sel=ui.sel===d.id?null:d.id;render();return}
  dr=d;const p=dropPos(ev);dr=null;const it=It(d.id);if(p&&put(it,ui.eq,p.gr.dataset.c,p.x,p.y,it.w,it.h))ui.sel=d.id;render()});
 document.addEventListener('pointercancel',()=>{dr=null;document.body.classList.remove('dragging');$('#ghost').style.display='none'});
-render();
+migrate();save();render();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script></body></html>
