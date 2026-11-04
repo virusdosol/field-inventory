@@ -66,7 +66,11 @@ function inside(id,cid){let n=0;while(isB(cid)&&n++<50){const bid=cid.slice(2);i
 function moveKids(b,eid){kids(b).forEach(k=>{k.loc.eq=eid;moveKids(k,eid)})}
 function placeStr(eid,cid){if(isB(cid)){const b=It(cid.slice(2));return b?placeStr(b.loc.eq,b.loc.comp)+' › '+b.name:'?'}const e=E(eid);return e?e.name+' · '+(isExtG(eid,cid)?'Carga externa: ':'')+(comp(eid,cid)?.name||'?'):'—'}
 const isExtG=(eid,cid)=>!!E(eid)?.extGrids?.some(c=>c.id===cid);
-function migrate(){S.eq.forEach(e=>{if(e.ext&&!e.extGrids)e.extGrids=['Tripé','Barraca','Chinelos'].map(n=>({id:uid(),name:n,w:6,h:6}));if(!e.extGrids)e.extGrids=[]});
+const fixing=new Set();
+function fixRot(){S.items.forEach(i=>{if(i.rot!==undefined)return;if(!i.img){i.rot=0;return}if(fixing.has(i.id))return;fixing.add(i.id);const im=new Image();
+ im.onload=()=>{const r=im.width/im.height,f=i.w/i.h;i.rot=((r>1.15&&f<.87)||(r<.87&&f>1.15))?90:0;fixing.delete(i.id);save();render()};im.onerror=()=>{i.rot=0;fixing.delete(i.id)};im.src=i.img})}
+function migrate(){migrate0();fixRot()}
+function migrate0(){S.eq.forEach(e=>{if(e.ext&&!e.extGrids)e.extGrids=['Tripé','Barraca','Chinelos'].map(n=>({id:uid(),name:n,w:6,h:6}));if(!e.extGrids)e.extGrids=[]});
  S.items.forEach(i=>{if(i.loc.comp!=='ext')return;const e=E(i.loc.eq);if(!e||!e.extGrids.length){e&&(e.extGrids=[{id:uid(),name:'Carga 1',w:6,h:6}])}
   const gs=e.extGrids,pref=gs.find(k=>new RegExp(k.name.slice(0,4),'i').test(i.name));
   for(const g of [pref,...gs].filter(Boolean)){const s=spot(e.id,g.id,i.w,i.h,i.id);if(s){i.w=s.w;i.h=s.h;i.loc={eq:e.id,comp:g.id,x:s.x,y:s.y};return}}
@@ -159,15 +163,14 @@ function itemForm(i){i=i||{};pendImg=undefined;
  <label><input type="checkbox" id="f_st" style="width:auto;min-height:0" ${i.stack?'checked':''}> Empilhável (permite quantidade maior que 1)</label>
  <label><input type="checkbox" id="f_bx" style="width:auto;min-height:0" ${i.box?'checked':''} onchange="$('#f_bxd').style.display=this.checked?'grid':'none'"> É um recipiente (estojo, necessaire, bolsa interna)</label><div class="grp" id="f_bxd" style="display:${i.box?'grid':'none'}"><div><label>Largura interna (células)</label><input id="f_bw" type="number" min="1" value="${i.box?.w||4}"></div><div><label>Altura interna (células)</label><input id="f_bh" type="number" min="1" value="${i.box?.h||4}"></div></div>
  <label>Imagem (PNG, WebP ou JPG)</label><input type="file" id="f_i" accept="image/png,image/webp,image/jpeg">${i.img?`<label><input type="checkbox" id="f_ri" style="width:auto;min-height:0"> Remover imagem atual</label>`:''}
- <label>Orientação da imagem</label><select id="f_r">${[0,90,180,270].map(r=>`<option value="${r}" ${(i.rot||0)===r?'selected':''}>${r}°${r?' (girada)':' (original)'}</option>`).join('')}</select>
  <label>Observações</label><textarea id="f_o">${esc(i.notes)}</textarea><div class="row" style="margin-top:12px"><button class="b sp" data-a="mc">Cancelar</button><button class="b pr sp" data-a="saveItem" data-id="${i.id||''}">Salvar</button></div>`);
  $('#f_i').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=Math.min(1,384/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*m);cv.height=Math.round(im.height*m);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);pendImg=cv.toDataURL('image/webp',.85);toast('Imagem pronta.')};im.onerror=()=>toast('Imagem inválida.');im.src=r.result};r.readAsDataURL(f)}}
 function saveItem(id){const n=$('#f_n').value.trim();if(!n)return toast('Informe o nome.');
  const w=Math.max(1,parseInt($('#f_w').value)||1),h=Math.max(1,parseInt($('#f_h').value)||1),stack=$('#f_st').checked;let qty=Math.max(1,parseInt($('#f_q').value)||1);if(!stack)qty=1;
- const d={name:n,desc:$('#f_d').value,cat:$('#f_c').value||S.cats[S.cats.length-1]?.id,sub:$('#f_s').value,g:+$('#f_g').value||0,qty,stack,notes:$('#f_o').value,rot:+$('#f_r').value||0,box:$('#f_bx').checked?{w:Math.max(1,parseInt($('#f_bw').value)||1),h:Math.max(1,parseInt($('#f_bh').value)||1)}:null};
+ const d={name:n,desc:$('#f_d').value,cat:$('#f_c').value||S.cats[S.cats.length-1]?.id,sub:$('#f_s').value,g:+$('#f_g').value||0,qty,stack,notes:$('#f_o').value,box:$('#f_bx').checked?{w:Math.max(1,parseInt($('#f_bw').value)||1),h:Math.max(1,parseInt($('#f_bh').value)||1)}:null};
  if(id){const i=It(id);{const ks=kids(i);if(ks.length){if(!d.box)return toast('Retire os itens de dentro antes de desmarcar recipiente.');const bad=ks.find(k=>k.loc.x+k.w>d.box.w||k.loc.y+k.h>d.box.h);if(bad)return toast('"'+bad.name+'" ficaria fora do novo tamanho interno.')}}if(w!==i.w||h!==i.h){const m=why(i.loc.eq,i.loc.comp,i.loc.x,i.loc.y,w,h,id);if(m)return toast('Novo tamanho não cabe: '+m)}
-  Object.assign(i,d,{w,h});if(pendImg)i.img=pendImg;if($('#f_ri')?.checked)i.img=null}
- else{const i={id:uid(),...d,w,h,img:pendImg||null,loc:null};
+  Object.assign(i,d,{w,h});if(pendImg){i.img=pendImg;i.rot=0}if($('#f_ri')?.checked)i.img=null}
+ else{const i={id:uid(),...d,w,h,rot:0,img:pendImg||null,loc:null};
   {const cid=ui.target||ui.comp;const s=spot(ui.eq,cid,w,h);if(!s)return toast('Sem espaço livre nesta grade para '+w+'×'+h+'.');i.w=s.w;i.h=s.h;i.loc={eq:ui.eq,comp:cid,x:s.x,y:s.y}}
   S.items.push(i);ui.sel=i.id}
  save();closeM();render()}
