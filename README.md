@@ -43,12 +43,18 @@ O inventário começa **vazio**: nada de objetos de exemplo. Você pode adiciona
 - Arrastar e soltar por toque ou mouse, com prévia verde (cabe) ou vermelha (não cabe).
 - Alternativa sem arrastar: tocar no objeto e depois na célula de destino.
 - Girar 90°, mover entre compartimentos e entre equipamentos.
+- **Troca de itens:** arraste um objeto sobre outro e a prévia fica âmbar. Os dois trocam de lugar de uma vez só, ou nenhum se move. Se o outro não couber, o app tenta girá-lo e, se mesmo assim não couber, explica o motivo.
 - Sem sobreposição e sem sair da grade. Se não couber, o app explica o motivo e o objeto continua onde estava.
 
 **Objetos**
 - Nome, descrição, categoria, subcategoria, peso (g), tamanho em células, quantidade, empilhável e observações.
 - Upload de imagem (PNG, WebP ou JPG) usada como sprite, com proporção preservada.
 - Duplicar, editar, excluir, ampliar, trocar ou remover a imagem.
+
+**Biblioteca**
+- Modelos reutilizáveis de objetos, começando vazia. Salve um objeto do inventário ("Salvar na biblioteca") ou crie um novo na aba Biblioteca.
+- "Usar" cria uma cópia independente no compartimento escolhido. Editar ou excluir o modelo não altera o que já está no inventário.
+- Nomes repetidos na mesma categoria pedem confirmação antes de atualizar. A biblioteca entra no backup.
 
 **EXTERNAL LOAD**
 - Área da mochila para o que vai preso por fora (tripé, chinelo, barraca). Não ocupa células.
@@ -71,6 +77,7 @@ O inventário começa **vazio**: nada de objetos de exemplo. Você pode adiciona
 ## 💾 Seus dados e backup
 
 - Tudo fica **salvo no próprio aparelho**, no armazenamento do navegador. Nada é enviado para servidores.
+- Se o navegador não conseguir gravar, o app mostra um aviso fixo "Alterações NÃO salvas". A importação valida o arquivo antes de trocar os dados e, se falhar, nada é alterado.
 - Limpar os dados do navegador ou desinstalar o app **apaga o inventário**.
 - Faça backup em **Config > Exportar** (arquivo `.json` com dados e imagens) e restaure em **Config > Importar**, inclusive em outro aparelho.
 
@@ -94,7 +101,6 @@ Para publicar a sua cópia: faça um fork, vá em **Settings > Pages**, escolha 
 
 ## Ainda não tem
 
-- Sincronização em nuvem entre dispositivos.
 - Backup compactado em ZIP.
 - Subcategorias cadastráveis e ícones de categoria personalizáveis.
 - Filtros por compartimento e por faixa de peso.
@@ -114,3 +120,13 @@ Sugestões e contribuições são bem-vindas: abra uma *issue* ou um *pull reque
 Feito por **virusdosol** para quem pedala longe e quer saber onde está o isqueiro.
 
 </div>
+
+## Nuvem (Supabase)
+
+- Entre em **Config → Sincronização** com e-mail e senha. O app continua funcionando offline: as alterações ficam pendentes e são enviadas quando houver conexão.
+- O indicador no topo mostra o estado: sincronizado, pendente, sincronizando, sem conexão, falha ou conflito.
+- **Primeiro envio:** o app valida os dados locais e pede confirmação antes de enviar. Os dados locais nunca são apagados.
+- **Conflito:** se a nuvem e este aparelho mudaram, nada é sobrescrito. Você escolhe entre usar a nuvem (uma cópia local de segurança é guardada) ou usar este aparelho (a versão da nuvem vai para o histórico, que guarda as últimas 10).
+- **Imagens:** ficam em um bucket privado, separadas dos dados, e não vão no JSON.
+- **Configuração:** rode `supabase_setup.sql` no SQL Editor do Supabase. A URL e a chave publishable estão no começo do bloco de nuvem em `index.html` (`SB` e `SK`). Essa chave é pública; nunca coloque a chave secret no código.
+- **Limites:** a sincronização é do inventário inteiro (não por objeto), com limite de cerca de 5 MB de dados e 2 MB por imagem. Não há recuperação de senha dentro do app (use o painel do Supabase).
